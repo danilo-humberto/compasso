@@ -55,6 +55,11 @@ function Workspace({ email }: { email: string }) {
       employee: "",
     }),
     [actionError, setActionError] = useState("");
+  function navigate(nextPage: Page) {
+    if (nextPage === page) return;
+    setPage(nextPage);
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }
   const hasScheduleConflict = useMemo(() => {
     const targets = new Set<string>();
     return (
@@ -94,7 +99,7 @@ function Workspace({ email }: { email: string }) {
             <button
               className={p.id === page ? "active" : ""}
               key={p.id}
-              onClick={() => setPage(p.id)}
+              onClick={() => navigate(p.id)}
             >
               <span aria-hidden="true">{p.icon}</span>
               {p.label}
@@ -153,7 +158,7 @@ function Workspace({ email }: { email: string }) {
               <p>{current.description}</p>
             </div>
             {page !== "imports" && (
-              <button className="primary" onClick={() => setPage("imports")}>
+              <button className="primary" onClick={() => navigate("imports")}>
                 ↥ Importar base
               </button>
             )}

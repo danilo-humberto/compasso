@@ -154,7 +154,7 @@ export type Database = {
         Returns: undefined;
       };
       assert_record: { Args: { item: Json }; Returns: undefined };
-      import_records: {
+      import_records_incremental: {
         Args: { expected_revision: number; incoming: Json };
         Returns: undefined;
       };

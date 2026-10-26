@@ -21,10 +21,14 @@ export const repository: Repository = {
   },
   async importRecords(records, revision) {
     if (!supabase) throw new Error("Configure o Supabase.");
-    const { error } = await supabase.rpc("import_records", {
+    const { error } = await supabase.rpc("import_records_incremental", {
       incoming: json(records),
       expected_revision: revision,
     });
+    if (error?.code === "PGRST202")
+      throw new Error(
+        "O banco precisa ser atualizado para importação incremental. Nenhum registro foi enviado para substituição.",
+      );
     if (error) throw new Error(error.message);
   },
   async saveSchedule(schedule, revision) {

@@ -99,11 +99,10 @@ export function previewImport(
   schedules: Schedule[],
 ): ImportPreview {
   const old = new Map(current.map((r) => [recordKey(r), r]));
-  const keys = new Set(incoming.map(recordKey));
   const result: ImportPreview = {
     inserted: 0,
     updated: 0,
-    removed: current.filter((r) => !keys.has(recordKey(r))).length,
+    removed: 0,
     unchanged: 0,
     pending: 0,
   };

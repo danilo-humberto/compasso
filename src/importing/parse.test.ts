@@ -46,7 +46,7 @@ it("rejeita arquivo vazio, data impossível e conflito", () => {
     ]),
   ).toThrow(/conflito/i);
 });
-it("reimportação é idempotente e substituição conta exclusões", () => {
+it("reimportação é idempotente e importação incremental não conta exclusões", () => {
   const records = parseRows([headers, row]);
   expect(previewImport(records, records, [])).toMatchObject({
     inserted: 0,
@@ -55,7 +55,7 @@ it("reimportação é idempotente e substituição conta exclusões", () => {
   });
   const incoming = [{ ...records[0], employeeId: "new" }];
   expect(previewImport(records, incoming, [])).toMatchObject({
-    removed: 1,
+    removed: 0,
     inserted: 1,
   });
 });

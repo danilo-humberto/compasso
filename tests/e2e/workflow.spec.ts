@@ -44,14 +44,22 @@ test("login, importar, configurar jornada e conferir saldo (API simulada)", asyn
       };
     else if (url.includes("/auth/v1/user")) body = user;
     else if (url.endsWith("/rpc/read_snapshot")) body = snapshot;
-    else if (url.endsWith("/rpc/import_records")) {
+    else if (url.endsWith("/rpc/import_records_incremental")) {
       const payload = req.postDataJSON() as {
         incoming: TimeRecord[];
         expected_revision: number;
       };
       expect(payload.expected_revision).toBe(snapshot.revision);
       expect(payload).not.toHaveProperty("import_mode");
-      snapshot.records = payload.incoming;
+      const records = new Map(
+        snapshot.records.map((r) => [
+          JSON.stringify([r.employeeId, r.date]),
+          r,
+        ]),
+      );
+      for (const record of payload.incoming)
+        records.set(JSON.stringify([record.employeeId, record.date]), record);
+      snapshot.records = [...records.values()];
       snapshot.revision++;
     } else if (url.endsWith("/rpc/delete_schedule")) {
       const payload = req.postDataJSON() as {

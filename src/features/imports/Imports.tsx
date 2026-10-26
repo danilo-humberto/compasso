@@ -46,9 +46,10 @@ export function Imports({
           <div>
             <h2>Uma base atualizada. Uma visão melhor.</h2>
             <p>
-              Ao selecionar uma planilha, toda a base de ponto é substituída
-              automaticamente. Se a atualização falhar, a base atual é
-              preservada.
+              Ao selecionar uma planilha, novos registros são adicionados e
+              registros da mesma matrícula e data são atualizados. Os meses e
+              registros ausentes do arquivo são preservados. Se a importação
+              falhar, a base atual é mantida.
             </p>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import type { Calculation, ReportRow, Schedule, TimeRecord } from "./types";
 import { punctuality } from "./punctuality";
+import { isSaturdayOvertime } from "./saturday";
 export const formatMinutes = (value: number) =>
   `${value < 0 ? "−" : ""}${String(Math.floor(Math.abs(value) / 60)).padStart(2, "0")}:${String(Math.abs(value) % 60).padStart(2, "0")}`;
 const minute = (s: string) =>
@@ -24,13 +25,21 @@ export function calculate(
   record: TimeRecord,
   schedule?: Schedule,
 ): Calculation {
-  const p = record.punches;
+  const saturdayOvertime = isSaturdayOvertime(record, schedule);
+  const p = saturdayOvertime ? record.punches.slice(0, 2) : record.punches;
   const periods =
     schedule?.week[new Date(record.date + "T12:00:00Z").getUTCDay()];
   const count = p.filter(Boolean).length;
   if (
     count !== 4 &&
-    !(count === 2 && p[0] && p[1] && !p[2] && !p[3] && periods?.length === 1)
+    !(
+      count === 2 &&
+      p[0] &&
+      p[1] &&
+      !p[2] &&
+      !p[3] &&
+      (saturdayOvertime || periods?.length === 1)
+    )
   )
     return { kind: "pending", reason: "Batidas incompletas para a jornada" };
   const times = p
@@ -39,6 +48,8 @@ export function calculate(
   if (times.some((t, i) => !Number.isFinite(t) || (i > 0 && t <= times[i - 1])))
     return { kind: "pending", reason: "Ordem ou horário de batidas inválido" };
   const worked = times[1] - times[0] + (count === 4 ? times[3] - times[2] : 0);
+  if (saturdayOvertime)
+    return { kind: "valid", worked, expected: 0, balance: worked };
   if (!periods) return { kind: "no-schedule", worked };
   const expected = periods.reduce(
     (total, p) => total + periodMinutes(p.start, p.end),

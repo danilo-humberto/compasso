@@ -119,7 +119,10 @@ export function Records({
                       title={s.kind === "pending" ? s.reason : r.sourceSchedule}
                     >
                       {s.kind === "valid"
-                        ? "Calculado"
+                        ? new Date(r.date + "T12:00:00Z").getUTCDay() === 6 &&
+                          s.expected === 0
+                          ? "Hora extra"
+                          : "Calculado"
                         : s.kind === "no-schedule"
                           ? "Sem jornada"
                           : "Conferir batidas"}

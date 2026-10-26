@@ -131,6 +131,15 @@ console.log(
 );
 // A migration incrementa a revisão; reinicia apenas a base sintética vazia desta suíte.
 await db.query("UPDATE public.base_revision SET revision=0");
+await db.query(
+  readFileSync(
+    new URL(
+      "../../supabase/migrations/202610260004_incremental_import.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+);
 const record = {
   employeeId: "001",
   name: "Pessoa sintética",
@@ -169,11 +178,21 @@ const login = async (client) => {
 const snapshot = async () =>
   (await db.query("SELECT public.read_snapshot() AS data")).rows[0].data;
 const importRows = async (rows, rev) =>
-  db.query("SELECT public.import_records($1::jsonb,$2)", [
+  db.query("SELECT public.import_records_incremental($1::jsonb,$2)", [
     JSON.stringify(rows),
     rev,
   ]);
 try {
+  await check("RPC de substituição não está mais disponível", async () => {
+    assert.equal(
+      (
+        await db.query(
+          "SELECT to_regprocedure('public.import_records(jsonb,bigint)') AS old",
+        )
+      ).rows[0].old,
+      null,
+    );
+  });
   await check("RPC antiga com escolha de modo foi removida", async () => {
     const result = await db.query(
       "SELECT to_regprocedure('public.import_records(jsonb,text,bigint)') AS legacy",
@@ -211,7 +230,7 @@ try {
     );
     assert.equal((await snapshot()).records[0].name, record.name);
   });
-  await check("substituição inválida é atômica", async () => {
+  await check("importação inválida é atômica", async () => {
     await assert.rejects(importRows([{ ...record, date: "2026-02-31" }], 2));
     assert.equal((await snapshot()).records.length, 1);
     assert.equal((await snapshot()).revision, 2);
@@ -267,14 +286,18 @@ try {
     );
     assert.equal((await snapshot()).revision, 4);
   });
-  await check("substituição preserva jornadas e histórico", async () => {
-    await importRows([{ ...record, date: "2026-08-04" }], 4);
-    const s = await snapshot();
-    assert.equal(s.records.length, 1);
-    assert.equal(s.records[0].date, "2026-08-04");
-    assert.equal(s.schedules.length, 1);
-    assert.equal(s.imports[0].removed, 1);
-  });
+  await check(
+    "incremento preserva registros, jornadas e histórico",
+    async () => {
+      await importRows([{ ...record, date: "2026-08-04" }], 4);
+      const s = await snapshot();
+      assert.equal(s.records.length, 2);
+      assert.ok(s.records.some((r) => r.date === "2026-08-04"));
+      assert.equal(s.schedules.length, 1);
+      assert.equal(s.imports[0].removed, 0);
+      assert.equal(s.imports[0].mode, "merge");
+    },
+  );
   await check(
     "duas importações concorrentes: uma grava e outra pede nova prévia",
     async () => {
@@ -284,7 +307,7 @@ try {
         await login(other);
         const results = await Promise.allSettled([
           importRows([record], 5),
-          other.query("SELECT public.import_records($1,$2)", [
+          other.query("SELECT public.import_records_incremental($1,$2)", [
             JSON.stringify([record]),
             5,
           ]),
@@ -298,15 +321,15 @@ try {
     },
   );
   await check(
-    "falha na limpeza desfaz a nova gravação e preserva a base anterior",
+    "falha no histórico desfaz a nova gravação e preserva a base anterior",
     async () => {
       const before = await snapshot();
       await db.query("RESET ROLE");
-      await db.query(`CREATE FUNCTION public.test_cleanup_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      await db.query(`CREATE FUNCTION public.test_history_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
       IF NOT EXISTS(SELECT 1 FROM public.time_records WHERE employee_id='new-employee') THEN RAISE EXCEPTION 'Remoção ocorreu antes da nova gravação'; END IF;
-      RAISE EXCEPTION 'Falha simulada na limpeza';
+      RAISE EXCEPTION 'Falha simulada no histórico';
     END $$;
-    CREATE TRIGGER test_cleanup_failure BEFORE DELETE ON public.time_records FOR EACH ROW EXECUTE FUNCTION public.test_cleanup_failure();`);
+    CREATE TRIGGER test_history_failure BEFORE INSERT ON public.import_history FOR EACH ROW EXECUTE FUNCTION public.test_history_failure();`);
       await login(db);
       await assert.rejects(
         importRows(
@@ -319,18 +342,18 @@ try {
           ],
           before.revision,
         ),
-        /Falha simulada na limpeza/,
+        /Falha simulada no histórico/,
       );
       assert.deepEqual(await snapshot(), before);
       await db.query("RESET ROLE");
       await db.query(
-        "DROP TRIGGER test_cleanup_failure ON public.time_records; DROP FUNCTION public.test_cleanup_failure();",
+        "DROP TRIGGER test_history_failure ON public.import_history; DROP FUNCTION public.test_history_failure();",
       );
       await login(db);
     },
   );
   await check(
-    "a nova base é exata e remove cadastros exclusivos da anterior",
+    "incremento mantém registros e cadastros anteriores",
     async () => {
       const before = await snapshot();
       const replacement = [
@@ -338,17 +361,82 @@ try {
       ];
       await importRows(replacement, before.revision);
       const after = await snapshot();
-      assert.deepEqual(after.records, replacement);
+      assert.deepEqual(
+        after.records,
+        [...before.records, ...replacement].sort(
+          (a, b) =>
+            a.date.localeCompare(b.date) ||
+            a.employeeId.localeCompare(b.employeeId),
+        ),
+      );
       assert.deepEqual(after.schedules, before.schedules);
       assert.equal(after.imports.length, before.imports.length + 1);
       assert.deepEqual(
-        (await db.query("SELECT id FROM public.employees")).rows,
-        [{ id: "new-employee" }],
+        (await db.query("SELECT id FROM public.employees ORDER BY id")).rows,
+        [{ id: "001" }, { id: "new-employee" }],
       );
       assert.deepEqual(
-        (await db.query("SELECT id FROM public.contracts")).rows,
-        [{ id: "Novo contrato" }],
+        (await db.query("SELECT id FROM public.contracts ORDER BY id")).rows,
+        [{ id: "Contrato teste" }, { id: "Novo contrato" }],
       );
+    },
+  );
+  await check(
+    "outubro preserva agosto e setembro; reenvio corrige sem duplicar ou excluir",
+    async () => {
+      const monthly = (month, day = "03") => ({
+        ...record,
+        date: `2026-${month}-${day}`,
+        punchedDate: `2026-${month}-${day}`,
+        punches: record.punches.map((p) => ({
+          ...p,
+          at: `2026-${month}-${day}` + p.at.slice(10),
+        })),
+      });
+      const september = monthly("09"),
+        october = monthly("10"),
+        otherOctober = monthly("10", "05");
+      await importRows([september], (await snapshot()).revision);
+      const before = await snapshot();
+      await importRows([october, otherOctober], before.revision);
+      const added = await snapshot();
+      for (const old of before.records)
+        assert.ok(
+          added.records.some((r) => JSON.stringify(r) === JSON.stringify(old)),
+        );
+      assert.equal(added.records.length, before.records.length + 2);
+      assert.equal(added.imports[0].inserted, 2);
+      assert.equal(added.imports[0].removed, 0);
+      const corrected = {
+        ...october,
+        punches: october.punches.map((p, i) =>
+          i === 3 ? { ...p, at: "2026-10-03T18:00" } : p,
+        ),
+      };
+      await importRows([corrected], added.revision);
+      const updated = await snapshot();
+      assert.equal(updated.records.length, added.records.length);
+      assert.deepEqual(
+        updated.records.find(
+          (r) => r.employeeId === "001" && r.date === october.date,
+        ),
+        corrected,
+      );
+      assert.ok(updated.records.some((r) => r.date === otherOctober.date));
+      assert.equal(updated.imports[0].updated, 1);
+      await importRows([corrected], updated.revision);
+      const repeated = await snapshot();
+      assert.deepEqual(repeated.records, updated.records);
+      assert.equal(repeated.imports[0].inserted, 0);
+      assert.equal(repeated.imports[0].updated, 0);
+      assert.equal(repeated.imports[0].removed, 0);
+      await assert.rejects(
+        importRows(
+          [monthly("11"), { ...monthly("11"), date: "invalid" }],
+          repeated.revision,
+        ),
+      );
+      assert.deepEqual(await snapshot(), repeated);
     },
   );
   await check(

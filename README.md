@@ -8,7 +8,7 @@ O sistema analisa os registros enviados na planilha. Não cria dias ausentes, n�
 
 ## Funcionalidades
 
-- **Importação de Excel:** leitura de `.xlsx`, validação dos registros e substituição automática da base, com feedback de sucesso ou erro.
+- **Importação de Excel:** leitura de `.xlsx`, validação e atualização incremental da base, com feedback de sucesso ou erro.
 - **Visão geral:** horas registradas, horas previstas comparáveis, saldo informativo e registros que precisam de conferência.
 - **Filtros:** consulta por mês, contrato/localização e colaborador.
 - **Pontualidade por contrato:** gráficos de pizza com percentuais de entradas e retornos no horário ou em atraso, até quatro contratos por página.
@@ -90,14 +90,14 @@ O arquivo deve ser `.xlsx`, conter uma única aba, ter até **20 MB** e respeita
 São necessários os campos de matrícula, nome, localização, data lógica, data da batida e os quatro campos de data/hora das batidas. A descrição da escala é opcional. CPF é ignorado e não é enviado ao banco.
 
 - A importação começa ao selecionar o arquivo, sem prévia ou confirmação adicional.
-- **Cada arquivo substitui toda a base de ponto**, inclusive os meses ausentes na nova planilha.
+- **Cada arquivo incrementa a base de ponto**: registros novos são adicionados; registros da mesma matrícula e data lógica são atualizados sem duplicação. Meses e linhas ausentes do arquivo permanecem na base, inclusive em reenvios parciais de um mês.
 - Jornadas, usuários e histórico de importações são preservados.
 - Arquivos inválidos ou com duplicidades conflitantes são rejeitados integralmente.
 - Linhas enviadas com batidas vazias permanecem como pendências; datas sem linha na planilha não são acrescentadas.
 - Os sufixos `D` e `*` são tratados durante a leitura, preservando data e horário. O arquivo original não é modificado.
 - Fórmulas do Excel não são executadas; a leitura utiliza os resultados disponíveis no arquivo.
 
-A substituição ocorre em uma transação: o servidor valida e confere os novos dados antes de concluir a remoção dos antigos. Um erro na transação desfaz a operação. O aplicativo não armazena o arquivo Excel nem versões anteriores da base; conserve os arquivos de origem e os backups necessários.
+A importação ocorre em uma transação: o servidor valida todo o arquivo e confere a gravação dos registros enviados, sem excluir os anteriores. Um erro desfaz toda a operação. Reenviar o mesmo arquivo não duplica registros; reenviar uma linha corrigida atualiza seu conteúdo. O aplicativo não armazena o arquivo Excel nem versões anteriores das linhas atualizadas; conserve os arquivos de origem e os backups necessários.
 
 ## Regras de cálculo
 
@@ -105,9 +105,10 @@ A substituição ocorre em uma transação: o servidor valida e confere os novos
 
 - Quatro batidas válidas permitem somar dois períodos de trabalho.
 - Duas batidas permitem cálculo quando a jornada admite um período.
+- No sábado sem períodos configurados (inclusive sem jornada cadastrada), a diferença entre as batidas 1 e 2 conta integralmente como hora extra no saldo informativo, com previsto zero e sem avaliação de atraso. Nesse caso, batidas 3 e 4 não entram no cálculo. Entrada e saída ausentes, inválidas ou fora de ordem continuam pendentes. Se houver períodos configurados no sábado, prevalecem as regras da jornada, respeitando a prioridade da exceção individual.
 - Batidas incompletas ou fora de ordem ficam pendentes; o sistema não reorganiza horários automaticamente.
 - Datas completas permitem calcular períodos que atravessam a meia-noite. As datas são tratadas sem conversão pelo fuso do navegador.
-- Sem jornada, as horas calculáveis são mostradas, mas não há saldo.
+- Sem jornada, as horas calculáveis são mostradas, mas não há saldo, salvo a regra de sábado descrita acima.
 - O saldo compara horas realizadas e previstas nos mesmos dias válidos. Por isso, o total de horas registradas pode diferir do total realizado comparável.
 - Uma exceção individual tem prioridade sobre a jornada do contrato.
 - Há uma jornada por contrato ou colaborador, sem datas de vigência. Alterações recalculam todos os registros aplicáveis da base.
@@ -199,7 +200,7 @@ Configure HTTPS, a URL pública e os redirecionamentos de autenticação. Valide
 - A consulta carrega a base em uma RPC para manter uma visão consistente. Volumes maiores exigem avaliar paginação e agregação no servidor.
 - Uma gravação com revisão desatualizada é rejeitada para evitar sobrescrever alterações concorrentes.
 - Excluir uma jornada exige confirmação e preserva as batidas, recalculando os resultados. Não há desfazer na interface.
-- Jornadas de contratos ou colaboradores ausentes da nova planilha continuam preservadas. Para editá-las, o destino precisa existir novamente ou ser trocado por um destino atual.
+- Jornadas, contratos e colaboradores de meses anteriores continuam disponíveis após novas importações. Para editar uma jornada legada cujo destino não esteja na base acumulada, selecione um destino existente.
 - Não há edição manual de batidas, justificativas de pendências ou restauração automática de importações anteriores.
 - Mantenha os tipos de `src/data/database.types.ts` compatíveis com o schema após alterações no banco.
 
@@ -208,3 +209,5 @@ Configure HTTPS, a URL pública e os redirecionamentos de autenticação. Valide
 A migration `202610230002_replace_only.sql` substitui a assinatura antiga da RPC de importação; coordene sua aplicação com a atualização da interface. As migrations seguintes incluem exclusão de jornadas e identificação do autor no histórico.
 
 A migration `202610260003_schedules_without_validity.sql` remove as datas de vigência das jornadas. Faça backup recuperável antes de aplicá-la. Se houver múltiplas jornadas para o mesmo destino, ela aborta: escolha qual manter e remova as duplicadas antes de tentar novamente. Durante essa transição, a interface permite gerenciar jornadas e suspende os cálculos até resolver o conflito.
+
+A migration `202610260004_incremental_import.sql` muda a importação para incremental, preservando os dados existentes e as permissões da função. A RPC passa de `import_records` para `import_records_incremental`; a antiga deixa de existir para impedir substituições por clientes desatualizados. Aplique a migration no ambiente autorizado e publique a interface correspondente. A interface nova recusa importar em um banco antigo, sem tentar a função de substituição. Clientes antigos precisam ser atualizados antes de voltar a importar. As novas entradas do histórico usam `merge` e zero exclusões; entradas antigas são preservadas. A mudança não recupera dados excluídos por importações anteriores.

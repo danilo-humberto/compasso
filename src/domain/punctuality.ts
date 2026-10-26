@@ -1,10 +1,12 @@
 import type { Punctuality, ReportRow, Schedule, TimeRecord } from "./types";
+import { isSaturdayOvertime } from "./saturday";
 
 // Datas civis: UTC apenas como eixo numérico, sem conversão de fuso.
 export function punctuality(
   record: TimeRecord,
   schedule?: Schedule,
 ): Punctuality {
+  if (isSaturdayOvertime(record, schedule)) return { kind: "not-applicable" };
   if (!schedule)
     return {
       kind: "unavailable",
