@@ -64,6 +64,7 @@ it("confirma edição de jornada somente depois de persistir", async () => {
       snapshot={snapshot}
       repository={{
         load: vi.fn(),
+        resetBase: vi.fn(),
         deleteSchedule: vi.fn(),
         importRecords: vi.fn(),
         saveSchedule,
@@ -85,6 +86,7 @@ it("não mostra sucesso quando a gravação falha", async () => {
       snapshot={snapshot}
       repository={{
         load: vi.fn(),
+        resetBase: vi.fn(),
         deleteSchedule: vi.fn(),
         importRecords: vi.fn(),
         saveSchedule: vi.fn(async () => {
@@ -111,6 +113,7 @@ it("exclui apenas após confirmar e limpa a edição da jornada removida", async
         load: vi.fn(),
         importRecords: vi.fn(),
         saveSchedule: vi.fn(),
+        resetBase: vi.fn(),
         deleteSchedule,
       }}
       reload={reload}
@@ -148,6 +151,7 @@ it("mantém a jornada e não anuncia sucesso quando a exclusão falha", async ()
         load: vi.fn(),
         importRecords: vi.fn(),
         saveSchedule: vi.fn(),
+        resetBase: vi.fn(),
         deleteSchedule: vi.fn(async () => {
           throw new Error("A base mudou. Atualize antes de excluir.");
         }),

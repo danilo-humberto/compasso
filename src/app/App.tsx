@@ -207,6 +207,9 @@ function Workspace({ email }: { email: string }) {
                         snapshot={snapshot}
                         repository={repo}
                         reload={reload}
+                        onReset={() =>
+                          setFilters({ month: "", contract: "", employee: "" })
+                        }
                       />
                     )}{" "}
                     {page === "schedules" && (

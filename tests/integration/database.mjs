@@ -140,6 +140,15 @@ await db.query(
     "utf8",
   ),
 );
+await db.query(
+  readFileSync(
+    new URL(
+      "../../supabase/migrations/202611040001_reset_base.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+);
 const record = {
   employeeId: "001",
   name: "Pessoa sintética",
@@ -520,6 +529,135 @@ try {
       assert.equal(after.imports.length, before.imports.length);
       assert.equal(after.revision, before.revision);
       assert.ok(!JSON.stringify(after).includes("@example.test"));
+    },
+  );
+  await check(
+    "reset exige autenticação e revisão atual, sem alterar dados em falhas",
+    async () => {
+      const before = await snapshot();
+      await db.query("RESET ROLE");
+      await db.query("SET ROLE anon");
+      await assert.rejects(
+        db.query("SELECT public.reset_base($1)", [before.revision]),
+        /permission denied/,
+      );
+      await login(db);
+      await db.query("SELECT set_config('request.jwt.claim.sub','',false)");
+      await assert.rejects(
+        db.query("SELECT public.reset_base($1)", [before.revision]),
+        /Acesso não autorizado/,
+      );
+      await login(db);
+      for (const rev of [null, before.revision - 1]) {
+        await assert.rejects(
+          db.query("SELECT public.reset_base($1)", [rev]),
+          /A base mudou/,
+        );
+      }
+      assert.deepEqual(await snapshot(), before);
+    },
+  );
+  await check(
+    "reset é atômico e preserva a base inteira se uma exclusão falhar",
+    async () => {
+      await db.query("SELECT public.save_schedule($1,$2)", [
+        JSON.stringify(schedule),
+        (await snapshot()).revision,
+      ]);
+      const before = await snapshot();
+      await db.query("RESET ROLE");
+      await db.query(`CREATE FUNCTION public.test_reset_failure() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'Falha sintética no reset'; END $$;
+      CREATE TRIGGER test_reset_failure BEFORE DELETE ON public.contracts FOR EACH ROW EXECUTE FUNCTION public.test_reset_failure();`);
+      await login(db);
+      await assert.rejects(
+        db.query("SELECT public.reset_base($1)", [before.revision]),
+        /Falha sintética/,
+      );
+      assert.deepEqual(await snapshot(), before);
+      await db.query("RESET ROLE");
+      await db.query(
+        "DROP TRIGGER test_reset_failure ON public.contracts; DROP FUNCTION public.test_reset_failure()",
+      );
+      await login(db);
+    },
+  );
+  await check(
+    "reset preserva jornadas e usuários, limpa dados importados e permite reimportação",
+    async () => {
+      await db.query("RESET ROLE");
+      await db.query("INSERT INTO auth.users VALUES ($1,$2,'{}'::jsonb)", [
+        uid,
+        "pessoa@example.test",
+      ]);
+      await login(db);
+      const before = await snapshot();
+      await db.query("SELECT public.reset_base($1)", [before.revision]);
+      assert.deepEqual(await snapshot(), {
+        records: [],
+        schedules: before.schedules,
+        imports: [],
+        revision: before.revision + 1,
+      });
+      for (const table of [
+        "time_records",
+        "import_history",
+        "employees",
+        "contracts",
+      ]) {
+        assert.equal(
+          (await db.query(`SELECT count(*)::int AS n FROM public.${table}`))
+            .rows[0].n,
+          0,
+        );
+      }
+      await db.query("RESET ROLE");
+      assert.equal(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM auth.users WHERE id=$1",
+            [uid],
+          )
+        ).rows[0].n,
+        1,
+      );
+      await login(db);
+      await assert.rejects(importRows([record], before.revision), /base mudou/);
+      await assert.rejects(
+        db.query("SELECT public.reset_base($1)", [before.revision]),
+        /base mudou/,
+      );
+      await importRows([record], before.revision + 1);
+      assert.equal((await snapshot()).records.length, 1);
+      assert.equal((await snapshot()).imports.length, 1);
+      assert.deepEqual((await snapshot()).schedules, before.schedules);
+    },
+  );
+  await check(
+    "reset e importação concorrentes: apenas uma operação grava",
+    async () => {
+      const before = await snapshot();
+      const other = new pg.Client({ ...config, database: "compasso_test" });
+      await other.connect();
+      try {
+        await login(other);
+        const results = await Promise.allSettled([
+          db.query("SELECT public.reset_base($1)", [before.revision]),
+          other.query("SELECT public.import_records_incremental($1,$2)", [
+            JSON.stringify([{ ...record, employeeId: "concurrent" }]),
+            before.revision,
+          ]),
+        ]);
+        assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+        const rejected = results.find((r) => r.status === "rejected");
+        assert.match(rejected.reason.message, /base mudou/);
+        const after = await snapshot();
+        assert.equal(after.revision, before.revision + 1);
+        if (results[0].status === "fulfilled")
+          assert.deepEqual(after.records, []);
+        else assert.equal(after.records.length, before.records.length + 1);
+      } finally {
+        await other.end();
+      }
     },
   );
   console.log(

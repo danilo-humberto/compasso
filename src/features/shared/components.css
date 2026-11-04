@@ -449,6 +449,13 @@ td small {
 .schedule-confirm::backdrop {
   background: #102c3599;
 }
+.reset-confirm:modal {
+  overscroll-behavior: contain;
+}
+.reset-confirm::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
 .schedule-confirm h2 {
   font-size: 20px;
   line-height: 1.4;

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useToast } from "../shared/toast/Toast";
 import type { Repository } from "../../data/port";
 import type { Snapshot } from "../../domain/types";
@@ -6,16 +6,23 @@ export function Imports({
   snapshot,
   repository,
   reload,
+  onReset,
 }: {
   snapshot: Snapshot;
   repository: Repository;
   reload: () => Promise<void>;
+  onReset?: () => void;
 }) {
   const { notify } = useToast();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const operationRef = useRef(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState("");
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
   async function read(file?: File) {
-    if (!file || busy) return;
+    if (!file || operationRef.current || dialogRef.current?.open) return;
+    operationRef.current = true;
     setError("");
     setBusy(true);
     let saving = false;
@@ -36,7 +43,44 @@ export function Imports({
       );
       if (saving) await reload();
     } finally {
+      operationRef.current = false;
       setBusy(false);
+    }
+  }
+  async function reset() {
+    if (operationRef.current || !dialogRef.current?.open) return;
+    operationRef.current = true;
+    setResetting(true);
+    setResetError("");
+    let completed = false;
+    try {
+      await repository.resetBase(snapshot.revision);
+      completed = true;
+      onReset?.();
+      dialogRef.current?.close();
+      notify({
+        action: "deleted",
+        title: "Base limpa",
+        message:
+          "Dados e histórico apagados. Você já pode importar uma nova planilha.",
+      });
+    } catch (e) {
+      setResetError(
+        `Não foi possível confirmar a limpeza.${e instanceof Error ? ` ${e.message}` : " Atualize a base antes de tentar novamente."}`,
+      );
+    } finally {
+      try {
+        await reload();
+      } catch {
+        const message = completed
+          ? "A base foi limpa, mas não foi possível atualizar a tela. Recarregue a página."
+          : "Não foi possível atualizar a base. Recarregue a página antes de tentar novamente.";
+        if (completed) setError(message);
+        else setResetError(message);
+      } finally {
+        operationRef.current = false;
+        setResetting(false);
+      }
     }
   }
   return (
@@ -61,7 +105,7 @@ export function Imports({
             aria-label="Planilha de ponto"
             type="file"
             accept=".xlsx"
-            disabled={busy}
+            disabled={busy || resetting}
             onChange={(e) => {
               const file = e.target.files?.[0];
               e.target.value = "";
@@ -75,6 +119,72 @@ export function Imports({
             {error}
           </p>
         )}
+      </section>
+      <section className="panel">
+        <div className="panel-title">
+          <div>
+            <h2>Recomeçar com uma base limpa</h2>
+            <p>
+              Apague os dados e o histórico de todos os usuários antes de
+              importar uma nova base.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="schedule-confirm-delete"
+            disabled={busy || resetting}
+            onClick={() => {
+              setResetError("");
+              setError("");
+              dialogRef.current?.showModal();
+            }}
+          >
+            Limpar toda a base
+          </button>
+        </div>
+        <dialog
+          ref={dialogRef}
+          className="schedule-confirm reset-confirm"
+          aria-labelledby="reset-title"
+          aria-describedby="reset-description"
+          onCancel={(event) => {
+            if (operationRef.current) event.preventDefault();
+          }}
+        >
+          <h2 id="reset-title">Limpar toda a base?</h2>
+          <p id="reset-description">
+            Todos os registros de ponto, colaboradores, contratos e o histórico
+            de importações serão apagados para todos os usuários. Os usuários,
+            seus acessos e as jornadas cadastradas serão mantidos. Esta ação não
+            pode ser desfeita pelo sistema.
+          </p>
+          {resetError && (
+            <p role="alert" className="error">
+              {resetError}
+            </p>
+          )}
+          {resetting && (
+            <p role="status">Limpando a base. Aguarde a conclusão.</p>
+          )}
+          <div className="schedule-confirm-actions">
+            <button
+              type="button"
+              autoFocus
+              disabled={resetting}
+              onClick={() => dialogRef.current?.close()}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              className="schedule-confirm-delete"
+              disabled={resetting}
+              onClick={() => void reset()}
+            >
+              Confirmar limpeza
+            </button>
+          </div>
+        </dialog>
       </section>
       <section className="panel">
         <div className="panel-title">

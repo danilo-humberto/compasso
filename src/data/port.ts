@@ -1,5 +1,6 @@
 import type { Schedule, Snapshot, TimeRecord } from "../domain/types";
 export interface Repository {
+  resetBase(revision: number): Promise<void>;
   deleteSchedule(id: string, revision: number): Promise<void>;
   load(): Promise<Snapshot>;
   importRecords(records: TimeRecord[], revision: number): Promise<void>;

@@ -149,6 +149,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      reset_base: {
+        Args: { expected_revision: number };
+        Returns: undefined;
+      };
       delete_schedule: {
         Args: { schedule_id: string; expected_revision: number };
         Returns: undefined;

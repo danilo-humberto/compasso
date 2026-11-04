@@ -5,6 +5,13 @@ import type { Repository } from "./port";
 const json = (value: unknown): Json =>
   JSON.parse(JSON.stringify(value)) as Json;
 export const repository: Repository = {
+  async resetBase(revision) {
+    if (!supabase) throw new Error("Configure o Supabase.");
+    const { error } = await supabase.rpc("reset_base", {
+      expected_revision: revision,
+    });
+    if (error) throw new Error(error.message);
+  },
   async deleteSchedule(id, revision) {
     if (!supabase) throw new Error("Configure o Supabase.");
     const { error } = await supabase.rpc("delete_schedule", {

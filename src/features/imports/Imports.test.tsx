@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, afterAll, expect, it, vi } from "vitest";
 import { readWorkbook } from "../../importing/workbook";
 import { decodeSnapshot } from "../../data/decode";
 import { Imports } from "./Imports";
@@ -20,6 +20,115 @@ vi.mock("../../importing/workbook", () => ({
   ]),
 }));
 afterEach(cleanup);
+const dialogMethods = ["showModal", "close"] as const;
+const originals = dialogMethods.map((name) =>
+  Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, name),
+);
+beforeAll(() => {
+  for (const name of dialogMethods)
+    Object.defineProperty(HTMLDialogElement.prototype, name, {
+      configurable: true,
+      value: function (this: HTMLDialogElement) {
+        if (name === "showModal") this.setAttribute("open", "");
+        else this.removeAttribute("open");
+      },
+    });
+});
+afterAll(() =>
+  dialogMethods.forEach((name, i) => {
+    if (originals[i])
+      Object.defineProperty(HTMLDialogElement.prototype, name, originals[i]!);
+    else Reflect.deleteProperty(HTMLDialogElement.prototype, name);
+  }),
+);
+
+function setupReset(resetBase = vi.fn(async () => {})) {
+  const reload = vi.fn(async () => {});
+  render(
+    <Imports
+      snapshot={{ revision: 7, records: [], imports: [], schedules: [] }}
+      repository={{
+        resetBase,
+        load: vi.fn(),
+        importRecords: vi.fn(),
+        saveSchedule: vi.fn(),
+        deleteSchedule: vi.fn(),
+      }}
+      reload={reload}
+    />,
+    { wrapper: ToastProvider },
+  );
+  return { resetBase, reload };
+}
+it("só limpa após confirmação e permite cancelar sem digitar texto", async () => {
+  const { resetBase, reload } = setupReset();
+  await userEvent.click(
+    screen.getByRole("button", { name: "Limpar toda a base" }),
+  );
+  expect(screen.getByRole("dialog").textContent).toContain(
+    "para todos os usuários",
+  );
+  expect(screen.queryByRole("textbox")).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+  expect(resetBase).not.toHaveBeenCalled();
+  await userEvent.click(
+    screen.getByRole("button", { name: "Limpar toda a base" }),
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: "Confirmar limpeza" }),
+  );
+  expect(resetBase).toHaveBeenCalledExactlyOnceWith(7);
+  expect(reload).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.getByRole("status").textContent).toContain("Base limpa");
+});
+it("bloqueia importação e duplo clique durante a limpeza", async () => {
+  let finish!: () => void;
+  const { resetBase } = setupReset(
+    vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    ),
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: "Limpar toda a base" }),
+  );
+  await userEvent.dblClick(
+    screen.getByRole("button", { name: "Confirmar limpeza" }),
+  );
+  expect(resetBase).toHaveBeenCalledOnce();
+  expect(
+    (screen.getByLabelText("Planilha de ponto") as HTMLInputElement).disabled,
+  ).toBe(true);
+  expect(
+    (screen.getByRole("button", { name: "Cancelar" }) as HTMLButtonElement)
+      .disabled,
+  ).toBe(true);
+  const cancel = new Event("cancel", { cancelable: true });
+  screen.getByRole("dialog").dispatchEvent(cancel);
+  expect(cancel.defaultPrevented).toBe(true);
+  finish();
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+it("exibe erro e atualiza a base sem repetir automaticamente a limpeza", async () => {
+  const { resetBase, reload } = setupReset(
+    vi.fn(async () => {
+      throw new Error("A base mudou");
+    }),
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: "Limpar toda a base" }),
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: "Confirmar limpeza" }),
+  );
+  expect(screen.getByRole("alert").textContent).toContain("A base mudou");
+  expect(resetBase).toHaveBeenCalledOnce();
+  expect(reload).toHaveBeenCalledOnce();
+  expect(screen.queryByText("Base limpa")).toBeNull();
+});
 it("importa ao selecionar sem confirmação nem resumo e encaminha revisão", async () => {
   const importRecords = vi.fn(async () => {}),
     reload = vi.fn(async () => {});
@@ -43,6 +152,7 @@ it("importa ao selecionar sem confirmação nem resumo e encaminha revisão", as
       }}
       repository={{
         load: vi.fn(),
+        resetBase: vi.fn(),
         deleteSchedule: vi.fn(),
         saveSchedule: vi.fn(),
         importRecords,
@@ -101,6 +211,7 @@ it.each(["Pessoa Teste", undefined])(
           load: vi.fn(),
           importRecords: vi.fn(),
           saveSchedule: vi.fn(),
+          resetBase: vi.fn(),
           deleteSchedule: vi.fn(),
         }}
         reload={vi.fn()}
@@ -147,6 +258,7 @@ function setupImport(importRecords = vi.fn(async () => {})) {
       repository={{
         load: vi.fn(),
         saveSchedule: vi.fn(),
+        resetBase: vi.fn(),
         deleteSchedule: vi.fn(),
         importRecords,
       }}

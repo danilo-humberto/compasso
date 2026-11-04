@@ -8,6 +8,7 @@ it("expõe carregamento e erro sem inventar base vazia", async () => {
       throw new Error("Falha de rede");
     }),
     saveSchedule: vi.fn(),
+    resetBase: vi.fn(),
     deleteSchedule: vi.fn(),
     importRecords: vi.fn(),
   };

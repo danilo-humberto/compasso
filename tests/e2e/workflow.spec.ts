@@ -61,6 +61,11 @@ test("login, importar, configurar jornada e conferir saldo (API simulada)", asyn
         records.set(JSON.stringify([record.employeeId, record.date]), record);
       snapshot.records = [...records.values()];
       snapshot.revision++;
+    } else if (url.endsWith("/rpc/reset_base")) {
+      expect(req.postDataJSON().expected_revision).toBe(snapshot.revision);
+      snapshot.records = [];
+      snapshot.imports = [];
+      snapshot.revision++;
     } else if (url.endsWith("/rpc/delete_schedule")) {
       const payload = req.postDataJSON() as {
         schedule_id: string;
@@ -227,5 +232,48 @@ test("login, importar, configurar jornada e conferir saldo (API simulada)", asyn
     page.getByText("Nenhuma jornada cadastrada.", { exact: false }),
   ).toBeVisible();
   expect(snapshot.schedules).toHaveLength(0);
+  expect(snapshot.records).toHaveLength(1);
+  await page
+    .getByRole("button", { name: "Importar base", exact: true })
+    .click();
+  const reset = page.getByRole("button", {
+    name: "Limpar toda a base",
+    exact: true,
+  });
+  await reset.click();
+  const resetModal = page.getByRole("dialog", { name: "Limpar toda a base?" });
+  await expect(
+    resetModal.getByRole("button", { name: "Cancelar", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(
+    resetModal.getByRole("button", { name: "Confirmar limpeza" }),
+  ).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(resetModal).toBeHidden();
+  await expect(reset).toBeFocused();
+  expect(snapshot.records).toHaveLength(1);
+  await reset.click();
+  await page.screenshot({
+    path: `test-results/reset-${test.info().project.name}.png`,
+  });
+  await resetModal.getByRole("button", { name: "Confirmar limpeza" }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Base limpa" }),
+  ).toBeVisible();
+  await expect(page.getByText("Nenhuma importação registrada.")).toBeVisible();
+  expect(snapshot.records).toHaveLength(0);
+  await page.getByLabel("Planilha de ponto").setInputFiles({
+    name: "nova-base.xlsx",
+    mimeType:
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    buffer: XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
+    }) as Buffer,
+  });
+  await expect(
+    page.getByRole("status").filter({ hasText: "Importação concluída" }),
+  ).toBeVisible();
   expect(snapshot.records).toHaveLength(1);
 });

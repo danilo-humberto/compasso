@@ -99,6 +99,18 @@ São necessários os campos de matrícula, nome, localização, data lógica, da
 
 A importação ocorre em uma transação: o servidor valida todo o arquivo e confere a gravação dos registros enviados, sem excluir os anteriores. Um erro desfaz toda a operação. Reenviar o mesmo arquivo não duplica registros; reenviar uma linha corrigida atualiza seu conteúdo. O aplicativo não armazena o arquivo Excel nem versões anteriores das linhas atualizadas; conserve os arquivos de origem e os backups necessários.
 
+### Limpar toda a base
+
+Na tela **Importar base**, clique em **Limpar toda a base** e confirme no modal. Não é necessário digitar uma frase. A limpeza apaga registros de ponto, colaboradores, contratos e todo o histórico de importações, para todos os usuários. Jornadas cadastradas (inclusive exceções individuais), usuários e acessos são preservados. Qualquer usuário autenticado pode executar a operação, conforme o modelo de base compartilhada do aplicativo.
+
+A exclusão ocorre em uma única transação e não pode ser desfeita pela interface. Uma revisão desatualizada é recusada; atualize e confirme novamente. A revisão é incrementada, nunca zerada, para impedir gravações de clientes desatualizados. Depois da limpeza, selecione uma nova planilha normalmente. A limpeza e a nova importação são operações separadas: se o novo arquivo for inválido, os registros continuarão vazios, com as jornadas preservadas.
+
+Não há anexos Excel no Storage gerenciados por este aplicativo: o arquivo é lido no navegador e somente seus dados são enviados ao banco. A limpeza não acessa buckets externos.
+
+Antes de disponibilizar o botão, o responsável deve aplicar `supabase/migrations/202611040001_reset_base.sql` no ambiente autorizado, com backup recuperável verificado, e publicar a interface. A migration apenas instala a RPC; não executa a limpeza. Para recuperar uma exclusão, use o backup do banco; reimportar planilhas não recupera o histórico apagado.
+
+Validação manual em ambiente de teste: importe uma planilha e cadastre uma jornada; abra o modal e cancele (inclusive com Escape); confira que os dados permanecem; confirme a limpeza; verifique registros e histórico vazios e jornadas intactas; importe uma nova planilha. Teste também uma confirmação após outro usuário alterar a base: a operação deve ser recusada.
+
 ## Regras de cálculo
 
 ### Horas e saldo
