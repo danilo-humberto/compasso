@@ -46,6 +46,35 @@ it("rejeita arquivo vazio, data impossível e conflito", () => {
     ]),
   ).toThrow(/conflito/i);
 });
+it("usa a data da batida quando a coluna data lógica está ausente", () => {
+  const withoutLogicalDate = (values: string[]) =>
+    values.filter((_, index) => index !== 4);
+  const input = [...row];
+  input[5] = "04/08/2026";
+  const [record] = parseRows([
+    withoutLogicalDate(headers),
+    withoutLogicalDate(input),
+  ]);
+  expect(record.date).toBe("2026-08-04");
+  expect(record.punchedDate).toBe(record.date);
+  expect(record.punches).toEqual(parseRows([headers, input])[0].punches);
+});
+it("preserva a data lógica quando ela difere da data da batida", () => {
+  const input = [...row];
+  input[5] = "04/08/2026";
+  expect(parseRows([headers, input])[0]).toMatchObject({
+    date: "2026-08-03",
+    punchedDate: "2026-08-04",
+  });
+});
+it("rejeita coluna data lógica duplicada ou presente com valor vazio", () => {
+  expect(() =>
+    parseRows([[...headers, "Data Lógica"], [...row, row[4]]]),
+  ).toThrow(/Coluna ausente ou duplicada: data logica/);
+  const input = [...row];
+  input[4] = "";
+  expect(() => parseRows([headers, input])).toThrow(/Linha 2: Data inválida/);
+});
 it("reimportação é idempotente e importação incremental não conta exclusões", () => {
   const records = parseRows([headers, row]);
   expect(previewImport(records, records, [])).toMatchObject({

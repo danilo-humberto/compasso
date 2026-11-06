@@ -87,7 +87,7 @@ Todos os usuários convidados têm acesso à mesma base e aos contratos disponí
 
 O arquivo deve ser `.xlsx`, conter uma única aba, ter até **20 MB** e respeitar o limite de **50 mil registros** por importação.
 
-São necessários os campos de matrícula, nome, localização, data lógica, data da batida e os quatro campos de data/hora das batidas. A descrição da escala é opcional. CPF é ignorado e não é enviado ao banco.
+São necessários os campos de matrícula, nome, localização, data da batida e os quatro campos de data/hora das batidas. Quando a coluna data lógica estiver ausente, será usada a data da batida de cada linha. Se a coluna data lógica existir, seus valores serão preservados e deverão conter datas válidas. A descrição da escala é opcional. CPF é ignorado e não é enviado ao banco.
 
 - A importação começa ao selecionar o arquivo, sem prévia ou confirmação adicional.
 - **Cada arquivo incrementa a base de ponto**: registros novos são adicionados; registros da mesma matrícula e data lógica são atualizados sem duplicação. Meses e linhas ausentes do arquivo permanecem na base, inclusive em reenvios parciais de um mês.

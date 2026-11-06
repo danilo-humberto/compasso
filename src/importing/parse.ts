@@ -48,9 +48,12 @@ export function parseRows(rows: unknown[][]): TimeRecord[] {
     "data da batida",
     ...Array.from({ length: 4 }, (_, i) => `data e hora da batida ${i + 1}`),
   ];
-  for (const h of required)
+  const hasLogicalDate = headers.includes("data logica");
+  for (const h of required) {
+    if (h === "data logica" && !hasLogicalDate) continue;
     if (headers.filter((x) => x === h).length !== 1)
       throw new Error(`Coluna ausente ou duplicada: ${h}`);
+  }
   const records = new Map<string, TimeRecord>();
   rows.slice(1).forEach((row, index) => {
     if (row.every((v) => v === null || v === undefined || v === "")) return;
@@ -65,7 +68,7 @@ export function parseRows(rows: unknown[][]): TimeRecord[] {
         employeeId,
         name,
         contract,
-        date: date(get("data logica")),
+        date: date(get(hasLogicalDate ? "data logica" : "data da batida")),
         punchedDate: date(get("data da batida")),
         punches: [
           punch(get(required[5])),
