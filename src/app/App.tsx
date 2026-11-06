@@ -10,9 +10,18 @@ import { Records } from "../features/records/Records";
 import { Imports } from "../features/imports/Imports";
 import { Schedules } from "../features/schedules/Schedules";
 import { Brand } from "../features/shared/Brand";
-type Page = "dashboard" | "records" | "schedules" | "imports";
+import { useAccess } from "../features/auth/useAccess";
+import type { Access } from "../features/auth/access";
+import { Users } from "../features/users/Users";
+type Page = "dashboard" | "records" | "schedules" | "imports" | "users";
 const pages: { id: Page; label: string; icon: string; description: string }[] =
   [
+    {
+      id: "users",
+      label: "Usuários",
+      icon: "♙",
+      description: "Gerencie os acessos à base compartilhada.",
+    },
     {
       id: "dashboard",
       label: "Visão geral",
@@ -43,9 +52,50 @@ export function App() {
   if (loading) return <div className="empty">Carregando sessão…</div>;
   if (recovery) return <Login recovery />;
   if (!session) return <Login />;
-  return <Workspace key={session.user.id} email={session.user.email ?? ""} />;
+  return (
+    <AuthorizedWorkspace
+      key={session.user.id}
+      email={session.user.email ?? ""}
+    />
+  );
 }
-function Workspace({ email }: { email: string }) {
+function AuthorizedWorkspace({ email }: { email: string }) {
+  const { access, loading, error, retry } = useAccess();
+  const [logoutError, setLogoutError] = useState("");
+  if (loading)
+    return (
+      <p role="status" className="empty">
+        Verificando permissões…
+      </p>
+    );
+  if (!access)
+    return (
+      <main className="empty">
+        <p role="alert">{error || "Acesso não autorizado."}</p>
+        {logoutError && <p role="alert">{logoutError}</p>}
+        <button onClick={retry}>Tentar novamente</button>
+        <button
+          onClick={() => void signOut().catch((e) => setLogoutError(String(e)))}
+        >
+          Sair
+        </button>
+      </main>
+    );
+  return (
+    <Workspace
+      key={`${access.role}:${access.canManageUsers}`}
+      email={email}
+      access={access}
+    />
+  );
+}
+function Workspace({ email, access }: { email: string; access: Access }) {
+  const canEdit = access.role === "admin";
+  const visiblePages = pages.filter((p) =>
+    p.id === "users"
+      ? access.canManageUsers
+      : canEdit || p.id === "dashboard" || p.id === "records",
+  );
   const repo = repository;
   const { snapshot, error, loading, reload } = useSnapshot(repo);
   const [page, setPage] = useState<Page>("dashboard"),
@@ -56,6 +106,7 @@ function Workspace({ email }: { email: string }) {
     }),
     [actionError, setActionError] = useState("");
   function navigate(nextPage: Page) {
+    if (!visiblePages.some((p) => p.id === nextPage)) return;
     if (nextPage === page) return;
     setPage(nextPage);
     window.scrollTo({ top: 0, left: 0, behavior: "instant" });
@@ -95,7 +146,7 @@ function Workspace({ email }: { email: string }) {
         <Brand />
         <small className="nav-heading">ESPAÇO DE TRABALHO</small>
         <nav>
-          {pages.map((p) => (
+          {visiblePages.map((p) => (
             <button
               className={p.id === page ? "active" : ""}
               key={p.id}
@@ -119,7 +170,13 @@ function Workspace({ email }: { email: string }) {
           <div className="avatar">{email.slice(0, 1).toUpperCase()}</div>
           <div>
             <strong>{email.split("@")[0]}</strong>
-            <small>Equipe · acesso completo</small>
+            <small>
+              {access.canManageUsers
+                ? "Administrador · responsável"
+                : canEdit
+                  ? "Administrador"
+                  : "Somente leitura"}
+            </small>
           </div>
           <button
             aria-label="Sair"
@@ -157,7 +214,7 @@ function Workspace({ email }: { email: string }) {
               <h1>{current.label}</h1>
               <p>{current.description}</p>
             </div>
-            {page !== "imports" && (
+            {canEdit && page !== "imports" && page !== "users" && (
               <button className="primary" onClick={() => navigate("imports")}>
                 ↥ Importar base
               </button>
@@ -169,7 +226,9 @@ function Workspace({ email }: { email: string }) {
               <button onClick={() => void reload()}>Tentar novamente</button>
             </div>
           )}
-          {loading && !snapshot ? (
+          {page === "users" && access.canManageUsers ? (
+            <Users />
+          ) : loading && !snapshot ? (
             <p role="status" className="empty">
               Carregando sua base…
             </p>
@@ -183,11 +242,15 @@ function Workspace({ email }: { email: string }) {
                       apenas uma por contrato ou colaborador. Os cálculos ficam
                       suspensos até resolver os conflitos.
                     </p>
-                    <Schedules
-                      snapshot={snapshot}
-                      repository={repo}
-                      reload={reload}
-                    />
+                    {canEdit ? (
+                      <Schedules
+                        snapshot={snapshot}
+                        repository={repo}
+                        reload={reload}
+                      />
+                    ) : (
+                      <p>Solicite a correção a um administrador.</p>
+                    )}
                   </>
                 ) : (
                   <>
@@ -202,7 +265,7 @@ function Workspace({ email }: { email: string }) {
                       <Dashboard rows={rows} employee={filters.employee} />
                     )}{" "}
                     {page === "records" && <Records rows={rows} />}{" "}
-                    {page === "imports" && (
+                    {page === "imports" && canEdit && (
                       <Imports
                         snapshot={snapshot}
                         repository={repo}
@@ -212,7 +275,7 @@ function Workspace({ email }: { email: string }) {
                         }
                       />
                     )}{" "}
-                    {page === "schedules" && (
+                    {page === "schedules" && canEdit && (
                       <Schedules
                         snapshot={snapshot}
                         repository={repo}

@@ -149,6 +149,16 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      get_my_access: { Args: Record<PropertyKey, never>; Returns: Json };
+      list_app_users: { Args: Record<PropertyKey, never>; Returns: Json };
+      set_user_role: {
+        Args: {
+          target_user: string;
+          new_role: string;
+          only_if_missing?: boolean;
+        };
+        Returns: undefined;
+      };
       reset_base: {
         Args: { expected_revision: number };
         Returns: undefined;

@@ -51,6 +51,15 @@ for (const type of ["invite", "recovery"]) {
         });
         return;
       }
+      if (req.url().endsWith("/rpc/get_my_access")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ role: "admin", canManageUsers: false }),
+          headers,
+        });
+        return;
+      }
       if (req.url().endsWith("/rpc/read_snapshot")) {
         await route.fulfill({
           status: 200,

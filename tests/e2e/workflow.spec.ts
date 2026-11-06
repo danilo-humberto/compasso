@@ -43,6 +43,8 @@ test("login, importar, configurar jornada e conferir saldo (API simulada)", asyn
         user,
       };
     else if (url.includes("/auth/v1/user")) body = user;
+    else if (url.endsWith("/rpc/get_my_access"))
+      body = { role: "admin", canManageUsers: false };
     else if (url.endsWith("/rpc/read_snapshot")) body = snapshot;
     else if (url.endsWith("/rpc/import_records_incremental")) {
       const payload = req.postDataJSON() as {

@@ -59,6 +59,8 @@ test("reset cancela, limpa filtros e permite importar uma base diferente", async
         user,
       };
     else if (url.includes("/auth/v1/user")) body = user;
+    else if (url.endsWith("/rpc/get_my_access"))
+      body = { role: "admin", canManageUsers: false };
     else if (url.endsWith("/rpc/read_snapshot")) body = snapshot;
     else if (url.endsWith("/rpc/reset_base")) {
       expect(req.postDataJSON().expected_revision).toBe(4);

@@ -69,11 +69,31 @@ Acesse [http://127.0.0.1:5178](http://127.0.0.1:5178). A porta é fixa. Reinicie
 ### Configuração do Supabase
 
 1. Aplique os arquivos de `supabase/migrations/` em ordem de nome no ambiente autorizado. Em instalações existentes, aplique apenas os arquivos ainda pendentes.
-2. Desative o cadastro público no Supabase Auth e convide os usuários pelo painel administrativo.
+2. Desative o cadastro público no Supabase Auth. Após configurar a gestão de usuários descrita abaixo, os convites podem ser enviados pela conta responsável na aplicação.
 3. Configure a URL da aplicação em **Site URL** e nas URLs de redirecionamento permitidas.
 4. Configure o envio de e-mails para convites e recuperação de senha.
 
-Todos os usuários convidados têm acesso à mesma base e aos contratos disponíveis. A aplicação não possui segregação de dados entre empresas ou contratos.
+Os usuários com perfil atribuído consultam a mesma base e os contratos disponíveis. A aplicação não possui segregação de dados entre empresas ou contratos. O perfil **Administrador** pode importar e limpar a base e gerenciar jornadas; **Somente leitura** acessa apenas Visão geral e Registros de ponto, com filtros, sem modificar os dados. A definição e recuperação da própria senha continuam disponíveis para ambos.
+
+### Gestão de usuários e permissões
+
+A migration `202611060001_user_access.sql` mantém todos os usuários existentes como administradores e concede exclusivamente à conta `danilohumberto@cifraengenharia.com.br` a gestão de usuários. A conta deve existir antes da aplicação: se não existir exatamente uma correspondência, a migration aborta integralmente. A permissão fica vinculada ao UUID da conta, não ao e-mail informado no navegador. Não exclua e recrie essa conta para trocar seu e-mail.
+
+Somente o responsável vê **Usuários**. Nessa tela, pode convidar por e-mail com perfil Administrador ou Somente leitura e alterar os perfis de outras contas. O próprio perfil do responsável não pode ser rebaixado pela aplicação. Administradores comuns não gerenciam usuários. Novas contas sem perfil ficam sem acesso à base, mesmo que tenham sido criadas diretamente no painel do Supabase.
+
+As permissões são verificadas no banco em cada operação. O perfil não é obtido de metadados editáveis pelo usuário. Leitores recebem os registros e as jornadas necessárias ao cálculo, mas não o histórico administrativo de importações. A interface revalida permissões ao recuperar o foco e a cada minuto; falhas nessa consulta bloqueiam a aplicação, sem assumir acesso administrativo. Alterações de perfil valem na próxima chamada ao banco, inclusive em sessões já abertas.
+
+O convite usa a Edge Function `supabase/functions/invite-user`, que verifica a sessão e a permissão de gestão antes de usar a API administrativa. A chave administrativa fica exclusivamente no servidor. Configure `APP_URL` na função com a URL pública aprovada da aplicação, também autorizada nos redirecionamentos do Supabase Auth. A função usa as variáveis de servidor `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY`; nunca coloque a chave administrativa em `VITE_*`.
+
+Ordem de publicação, somente após autorização específica para o ambiente:
+
+1. Confirme a conta responsável e os usuários existentes, preserve um backup recuperável e aplique as migrations pendentes em ordem. A migration de permissões é transacional.
+2. Configure `APP_URL`, o envio de e-mails e publique `invite-user` no projeto correto, mantendo a verificação JWT habilitada: `supabase functions deploy invite-user --project-ref <projeto-autorizado>`.
+3. Publique a interface e confira os acessos abaixo. A interface nova bloqueia o acesso se a migration de permissões ainda não estiver aplicada.
+
+Convite e atribuição de perfil envolvem serviços distintos. Se o convite for enviado e a atribuição falhar, a conta permanece sem acesso; o responsável deve atualizar a lista e atribuir o perfil indicado como **Acesso pendente**. Uma nova tentativa de convite não altera o perfil de contas existentes.
+
+Validação manual em ambiente de teste: entre como responsável, convide uma conta de cada perfil e conclua a definição da senha; confirme que administrador importa/gerencia jornadas e leitor só consulta as duas telas; altere um administrador de teste para leitura e confirme a remoção das ações ao voltar à janela. A entrega real do e-mail depende da configuração do provedor e deve ser conferida nesse ambiente.
 
 ## Como usar
 
@@ -185,9 +205,10 @@ Com Docker disponível, use exclusivamente um ambiente descartável. A senha aba
 ```sh
 docker run --detach --rm --name compasso-test-20261023 --publish 127.0.0.1:55439:5432 --env POSTGRES_PASSWORD=synthetic-test-only postgres:17-alpine
 node tests/integration/database.mjs
+node tests/integration/access.mjs
 ```
 
-O script recria o banco local `compasso_test` e verifica permissões, atomicidade, concorrência, importação e jornadas. A identidade de autenticação é simulada; esse teste não substitui a validação com Supabase Auth real. Não execute os testes contra produção.
+O primeiro script recria o banco local `compasso_test` e verifica permissões, atomicidade, concorrência, importação e jornadas. O segundo recria `compasso_access_test` no mesmo servidor descartável, aplica as migrations e testa os perfis, a preservação dos administradores existentes, a gestão exclusiva e as tentativas de escrita negadas. A identidade de autenticação é simulada; esses testes não substituem a validação com Supabase Auth real. Não execute os testes contra produção.
 
 Ao terminar:
 

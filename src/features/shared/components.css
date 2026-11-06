@@ -274,6 +274,49 @@ td small {
   grid-template-columns: repeat(3, 1fr);
   gap: 18px;
 }
+.user-invite {
+  display: grid;
+  gap: 12px;
+  max-width: 640px;
+  margin-block: 24px;
+}
+.user-invite fieldset {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #ccd3c5;
+  padding: 16px;
+}
+.user-invite fieldset label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+}
+.user-invite input[type="radio"] {
+  width: auto;
+  margin: 0;
+}
+.user-invite input[type="email"],
+.user-list select {
+  font-size: 1rem;
+  min-height: 48px;
+}
+.user-list {
+  list-style: none;
+  padding: 0;
+}
+.user-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block: 16px;
+  border-bottom: 1px solid #e5eadd;
+}
+.user-list strong {
+  overflow-wrap: anywhere;
+}
 .week {
   margin: 25px 0;
   border-top: 1px solid #e5eadd;
