@@ -151,6 +151,10 @@ export type Database = {
     Functions: {
       get_my_access: { Args: Record<PropertyKey, never>; Returns: Json };
       list_app_users: { Args: Record<PropertyKey, never>; Returns: Json };
+      revoke_user_access: {
+        Args: { target_user: string };
+        Returns: undefined;
+      };
       set_user_role: {
         Args: {
           target_user: string;

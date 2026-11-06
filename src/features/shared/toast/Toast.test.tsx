@@ -96,3 +96,39 @@ it("enfileira notificações além das três visíveis", () => {
   act(() => vi.advanceTimersByTime(250));
   expect(screen.getAllByRole("status")).toHaveLength(3);
 });
+
+it("permite personalizar título e duração, mantendo erros até fechar", () => {
+  function Custom() {
+    const { notify } = useToast();
+    return (
+      <button
+        onClick={() =>
+          notify({
+            action: "error",
+            title: "Falha no convite",
+            message: "Tente novamente.",
+            duration: 0,
+          })
+        }
+      >
+        Falhar
+      </button>
+    );
+  }
+  render(
+    <ToastProvider>
+      <Custom />
+    </ToastProvider>,
+  );
+  fireEvent.click(screen.getByText("Falhar"));
+  expect(screen.getByRole("alert").textContent).toContain("Falha no convite");
+  act(() => vi.advanceTimersByTime(60000));
+  expect(screen.getByRole("alert")).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: "Fechar notificação: Falha no convite",
+    }),
+  );
+  act(() => vi.advanceTimersByTime(250));
+  expect(screen.queryByRole("alert")).toBeNull();
+});

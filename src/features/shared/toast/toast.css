@@ -123,3 +123,37 @@
     animation-duration: 1ms;
   }
 }
+
+.toast-stack {
+  inset: 88px 24px auto auto;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: visible;
+}
+.toast--error {
+  --toast-accent: #b33c3c;
+  --toast-tint: #fcecec;
+}
+.toast--info {
+  --toast-accent: #326a94;
+  --toast-tint: #eaf2f9;
+}
+.toast-close:focus-visible {
+  outline: 2px solid var(--toast-accent);
+  outline-offset: 2px;
+}
+@media (max-width: 760px) {
+  .toast-stack {
+    inset: auto 16px max(16px, env(safe-area-inset-bottom)) auto;
+  }
+}
+
+dialog .toast-stack {
+  position: static;
+  width: 100%;
+  max-height: 35vh;
+  overflow-y: auto;
+  margin-top: 16px;
+}

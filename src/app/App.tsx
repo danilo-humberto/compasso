@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useToastMessage } from "../features/shared/toast/Toast";
+import { useEffect, useMemo, useState } from "react";
 import { repository } from "../data/repository";
 import { useSession, signOut } from "../features/auth/Session";
 import { Login } from "../features/auth/Login";
@@ -17,12 +18,6 @@ type Page = "dashboard" | "records" | "schedules" | "imports" | "users";
 const pages: { id: Page; label: string; icon: string; description: string }[] =
   [
     {
-      id: "users",
-      label: "Usuários",
-      icon: "♙",
-      description: "Gerencie os acessos à base compartilhada.",
-    },
-    {
       id: "dashboard",
       label: "Visão geral",
       icon: "▦",
@@ -39,6 +34,12 @@ const pages: { id: Page; label: string; icon: string; description: string }[] =
       label: "Jornadas",
       icon: "▤",
       description: "Organize as horas previstas da sua operação.",
+    },
+    {
+      id: "users",
+      label: "Usuários",
+      icon: "♙",
+      description: "Gerencie os acessos à base compartilhada.",
     },
     {
       id: "imports",
@@ -61,7 +62,10 @@ export function App() {
 }
 function AuthorizedWorkspace({ email }: { email: string }) {
   const { access, loading, error, retry } = useAccess();
-  const [logoutError, setLogoutError] = useState("");
+  const setLogoutError = useToastMessage("error");
+  useEffect(() => {
+    if (error) setLogoutError(error);
+  }, [error, setLogoutError]);
   if (loading)
     return (
       <p role="status" className="empty">
@@ -71,8 +75,8 @@ function AuthorizedWorkspace({ email }: { email: string }) {
   if (!access)
     return (
       <main className="empty">
-        <p role="alert">{error || "Acesso não autorizado."}</p>
-        {logoutError && <p role="alert">{logoutError}</p>}
+        <p>Acesso indisponível. Tente novamente ou saia da conta.</p>
+
         <button onClick={retry}>Tentar novamente</button>
         <button
           onClick={() => void signOut().catch((e) => setLogoutError(String(e)))}
@@ -103,8 +107,11 @@ function Workspace({ email, access }: { email: string; access: Access }) {
       month: "",
       contract: "",
       employee: "",
-    }),
-    [actionError, setActionError] = useState("");
+    });
+  const setActionError = useToastMessage("error");
+  useEffect(() => {
+    if (error) setActionError(error);
+  }, [error, setActionError]);
   function navigate(nextPage: Page) {
     if (!visiblePages.some((p) => p.id === nextPage)) return;
     if (nextPage === page) return;
@@ -210,7 +217,9 @@ function Workspace({ email, access }: { email: string; access: Access }) {
         <div className="content">
           <div className="page-heading">
             <div>
-              <span className="eyebrow">GESTÃO DE JORNADAS</span>
+              {page !== "users" && (
+                <span className="eyebrow">GESTÃO DE JORNADAS</span>
+              )}
               <h1>{current.label}</h1>
               <p>{current.description}</p>
             </div>
@@ -220,9 +229,9 @@ function Workspace({ email, access }: { email: string; access: Access }) {
               </button>
             )}
           </div>
-          {(error || actionError) && (
-            <div className="error" role="alert">
-              {error || actionError}
+          {error && (
+            <div className="error">
+              Não foi possível atualizar a base.
               <button onClick={() => void reload()}>Tentar novamente</button>
             </div>
           )}

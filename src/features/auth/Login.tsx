@@ -1,16 +1,18 @@
+import { useToastMessage } from "../shared/toast/Toast";
 import { useState, type FormEvent } from "react";
 import { supabase } from "../../data/client";
 import { Brand } from "../shared/Brand";
 export function Login({ recovery = false }: { recovery?: boolean }) {
   const [email, setEmail] = useState(""),
     [password, setPassword] = useState(""),
-    [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false),
     [reset, setReset] = useState(false);
+  const setMessage = useToastMessage("info", "Recuperação de acesso");
+  const showError = useToastMessage("error");
   async function submit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
-    setMessage("");
+
     try {
       if (!supabase)
         throw new Error(
@@ -29,7 +31,7 @@ export function Login({ recovery = false }: { recovery?: boolean }) {
           "Se houver uma conta, você receberá as instruções por e-mail.",
         );
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Não foi possível acessar.");
+      showError(e instanceof Error ? e.message : "Não foi possível acessar.");
     } finally {
       setBusy(false);
     }
@@ -97,7 +99,6 @@ export function Login({ recovery = false }: { recovery?: boolean }) {
                   ? "Enviar instruções"
                   : "Entrar na minha conta →"}
           </button>
-          {message && <p role="status">{message}</p>}
         </form>
         {!recovery && (
           <button className="text-button" onClick={() => setReset(!reset)}>

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { useToast } from "../shared/toast/Toast";
+import { useToast, useToastMessage } from "../shared/toast/Toast";
 import type { Repository } from "../../data/port";
 import type { Snapshot } from "../../domain/types";
 export function Imports({
@@ -13,17 +13,16 @@ export function Imports({
   reload: () => Promise<void>;
   onReset?: () => void;
 }) {
+  const setError = useToastMessage("error");
+  const setResetError = useToastMessage("error");
   const { notify } = useToast();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const operationRef = useRef(false);
   const [resetting, setResetting] = useState(false);
-  const [resetError, setResetError] = useState("");
-  const [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(false);
   async function read(file?: File) {
     if (!file || operationRef.current || dialogRef.current?.open) return;
     operationRef.current = true;
-    setError("");
     setBusy(true);
     let saving = false;
     try {
@@ -51,7 +50,7 @@ export function Imports({
     if (operationRef.current || !dialogRef.current?.open) return;
     operationRef.current = true;
     setResetting(true);
-    setResetError("");
+
     let completed = false;
     try {
       await repository.resetBase(snapshot.revision);
@@ -114,11 +113,6 @@ export function Imports({
           />
         </label>
         {busy && <p role="status">Processando a planilha…</p>}
-        {error && (
-          <p role="alert" className="error">
-            {error}
-          </p>
-        )}
       </section>
       <section className="panel">
         <div className="panel-title">
@@ -134,8 +128,6 @@ export function Imports({
             className="schedule-confirm-delete"
             disabled={busy || resetting}
             onClick={() => {
-              setResetError("");
-              setError("");
               dialogRef.current?.showModal();
             }}
           >
@@ -158,11 +150,7 @@ export function Imports({
             seus acessos e as jornadas cadastradas serão mantidos. Esta ação não
             pode ser desfeita pelo sistema.
           </p>
-          {resetError && (
-            <p role="alert" className="error">
-              {resetError}
-            </p>
-          )}
+
           {resetting && (
             <p role="status">Limpando a base. Aguarde a conclusão.</p>
           )}

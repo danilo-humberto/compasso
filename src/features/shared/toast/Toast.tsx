@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import {
   createContext,
   useCallback,
@@ -10,16 +11,20 @@ import {
 } from "react";
 import "./toast.css";
 
-export type ToastAction = "added" | "updated" | "deleted";
+export type ToastAction = "added" | "updated" | "deleted" | "error" | "info";
 export interface ToastMessage {
   action: ToastAction;
   message: string;
   title?: string;
+  /** Milliseconds; zero keeps the notification until dismissed. */
+  duration?: number;
 }
 interface Notification extends ToastMessage {
   id: string;
 }
 const variants = {
+  error: { title: "Não foi possível concluir", icon: "!" },
+  info: { title: "Informação", icon: "i" },
   added: { title: "Dados adicionados", icon: "+" },
   updated: { title: "Dados atualizados", icon: "✓" },
   deleted: { title: "Dados excluídos", icon: "−" },
@@ -45,7 +50,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={value}>
       {children}
-      <section className="toast-stack" aria-label="Notificações do sistema">
+      <ToastViewport>
         {notifications.slice(0, 3).map((notification) => (
           <Toast
             key={notification.id}
@@ -53,7 +58,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             remove={remove}
           />
         ))}
-      </section>
+      </ToastViewport>
     </ToastContext.Provider>
   );
 }
@@ -75,13 +80,15 @@ function Toast({
   const [leaving, setLeaving] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
-  const remaining = useRef(6000);
+  const duration =
+    notification.duration ?? (notification.action === "error" ? 0 : 6000);
+  const remaining = useRef(duration);
   const { id, action, message } = notification;
   const title = notification.title ?? variants[action].title;
   const paused = hovered || focused;
 
   useEffect(() => {
-    if (paused || leaving) return;
+    if (paused || leaving || duration === 0) return;
     const started = Date.now();
     const timer = window.setTimeout(() => setLeaving(true), remaining.current);
     return () => {
@@ -91,7 +98,7 @@ function Toast({
         remaining.current - (Date.now() - started),
       );
     };
-  }, [paused, leaving]);
+  }, [paused, leaving, duration]);
   useEffect(() => {
     if (!leaving) return;
     // Fallback para animações desabilitadas ou eventos não disparados pelo navegador.
@@ -102,8 +109,8 @@ function Toast({
   return (
     <article
       className={`toast toast--${action}`}
-      role="status"
-      aria-live="polite"
+      role={action === "error" ? "alert" : "status"}
+      aria-live={action === "error" ? "assertive" : "polite"}
       aria-atomic="true"
       data-state={leaving ? "leaving" : "visible"}
       onMouseEnter={() => setHovered(true)}
@@ -133,5 +140,53 @@ function Toast({
         <span aria-hidden="true">×</span>
       </button>
     </article>
+  );
+}
+
+// Keep notifications reachable while a native modal makes the rest of the page inert.
+function ToastViewport({ children }: { children: ReactNode }) {
+  const [target, setTarget] = useState<Element>(document.body);
+  const ref = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const update = () =>
+      setTarget(document.querySelector("dialog[open]") ?? document.body);
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["open"],
+    });
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    const element = ref.current;
+    if (
+      target === document.body &&
+      element &&
+      "popover" in HTMLElement.prototype &&
+      !element.matches(":popover-open")
+    )
+      element.showPopover();
+  }, [target, children]);
+  return createPortal(
+    <section
+      ref={ref}
+      popover={target === document.body ? "manual" : undefined}
+      className="toast-stack"
+      aria-label="Notificações do sistema"
+    >
+      {children}
+    </section>,
+    target,
+  );
+}
+
+export function useToastMessage(action: ToastAction, title?: string) {
+  const { notify } = useToast();
+  return useCallback(
+    (message: string) => notify({ action, title, message }),
+    [notify, action, title],
   );
 }

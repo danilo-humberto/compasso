@@ -281,6 +281,8 @@ it("rejeita arquivo inválido sem gravar e permite selecionar o mesmo arquivo no
   );
   expect(screen.queryByText("Base importada com sucesso.")).toBeNull();
   expect(importRecords).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Fechar notificação: Não foi possível concluir" }));
+  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   await userEvent.upload(input, uploadFile);
   await waitFor(() => expect(importRecords).toHaveBeenCalledOnce());
   expect(screen.queryByRole("alert")).toBeNull();

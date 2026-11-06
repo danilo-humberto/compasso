@@ -61,3 +61,20 @@ export async function inviteUser(email: string, role: Access["role"]) {
   }
   if (data?.error) throw new Error(data.error);
 }
+export async function revokeUserAccess(id: string) {
+  if (!supabase) throw new Error("Configure o Supabase.");
+  const { data, error } = await supabase.functions.invoke("delete-user", {
+    body: { userId: id },
+  });
+  if (error) {
+    let message =
+      "Não foi possível confirmar a exclusão. Atualize a lista antes de tentar novamente.";
+    if (error.context instanceof Response) {
+      const body = await error.context.json().catch(() => null);
+      if (typeof body?.error === "string") message = body.error;
+    }
+    throw new Error(message);
+  }
+  if (data?.ok !== true)
+    throw new Error("Não foi possível confirmar a exclusão. Atualize a lista.");
+}

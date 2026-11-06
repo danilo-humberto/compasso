@@ -100,7 +100,7 @@ it("não mostra sucesso quando a gravação falha", async () => {
   await userEvent.click(screen.getByRole("button", { name: /^Comercial/ }));
   await userEvent.click(screen.getByRole("button", { name: "Salvar jornada" }));
   expect(screen.queryByRole("status")).toBeNull();
-  expect(screen.getByRole("alert").textContent).toBe("Falha de rede");
+  expect(screen.getByRole("alert").textContent).toContain("Falha de rede");
 });
 
 it("exclui apenas após confirmar e limpa a edição da jornada removida", async () => {

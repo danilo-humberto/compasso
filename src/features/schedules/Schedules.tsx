@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { Repository } from "../../data/port";
 import type { Schedule, Snapshot } from "../../domain/types";
 import { validateSchedule } from "../../domain/time";
-import { useToast } from "../shared/toast/Toast";
+import { useToast, useToastMessage } from "../shared/toast/Toast";
 const days = [
   "Domingo",
   "Segunda",
@@ -28,9 +28,9 @@ export function Schedules({
   repository: Repository;
   reload: () => Promise<void>;
 }) {
+  const setError = useToastMessage("error");
   const { notify } = useToast();
   const [draft, setDraft] = useState<Schedule>(blank),
-    [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [pendingDelete, setPendingDelete] = useState<Schedule | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -65,7 +65,6 @@ export function Schedules({
         ];
   async function save(e: FormEvent) {
     e.preventDefault();
-    setError("");
     try {
       validateSchedule(draft, snapshot.schedules);
       setBusy(true);
@@ -91,7 +90,6 @@ export function Schedules({
   async function remove() {
     if (!pendingDelete || busy) return;
     setBusy(true);
-    setError("");
     try {
       await repository.deleteSchedule(pendingDelete.id, snapshot.revision);
       if (draft.id === pendingDelete.id) setDraft(blank());
@@ -128,7 +126,6 @@ export function Schedules({
             disabled={busy || !!pendingDelete}
             onClick={() => {
               setDraft(blank());
-              setError("");
             }}
           >
             Nova jornada
@@ -239,11 +236,7 @@ export function Schedules({
               Saída anterior à entrada indica passagem pela meia-noite. Dias de
               um período aceitam duas batidas.
             </p>
-            {error && !pendingDelete && (
-              <p role="alert" className="error">
-                {error}
-              </p>
-            )}
+
             <button className="primary" disabled={busy}>
               {busy ? "Salvando…" : "Salvar jornada"}
             </button>
@@ -276,11 +269,7 @@ export function Schedules({
               recalculados com as jornadas restantes. Esta exclusão não pode ser
               desfeita pelo sistema.
             </p>
-            {error && (
-              <p role="alert" className="error">
-                {error}
-              </p>
-            )}
+
             <div className="schedule-confirm-actions">
               <button
                 type="button"
@@ -309,7 +298,6 @@ export function Schedules({
                 disabled={busy || !!pendingDelete}
                 onClick={() => {
                   setDraft(structuredClone(s));
-                  setError("");
                 }}
               >
                 <strong>{s.label}</strong>
@@ -326,7 +314,6 @@ export function Schedules({
                 disabled={busy}
                 onClick={(event) => {
                   deleteTriggerRef.current = event.currentTarget;
-                  setError("");
                   setPendingDelete(s);
                 }}
               >

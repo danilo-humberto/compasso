@@ -98,6 +98,13 @@ try {
     [manager],
   );
   await db.query(roleSql);
+  for (const file of readdirSync(migrationDir)
+    .filter(
+      (file) => file.endsWith(".sql") && file > "202611060001_user_access.sql",
+    )
+    .sort()) {
+    await db.query(readFileSync(new URL(file, migrationDir), "utf8"));
+  }
   await check(
     "usuários existentes permanecem admin e somente responsável gerencia",
     async () => {
@@ -236,6 +243,57 @@ try {
     },
   );
   await check(
+    "somente responsável revoga acesso e preserva a própria conta",
+    async () => {
+      for (const id of [legacy, reader, pending]) {
+        await login(id);
+        await denied("SELECT public.revoke_user_access($1)", [reader]);
+      }
+      await db.query("RESET ROLE");
+      await db.query("SET ROLE anon");
+      await denied("SELECT public.revoke_user_access($1)", [reader]);
+      await login(manager);
+      await assert.rejects(
+        db.query("SELECT public.revoke_user_access($1)", [manager]),
+        /responsável/,
+      );
+      await assert.rejects(
+        db.query("SELECT public.revoke_user_access(null)"),
+        /Usuário não encontrado/,
+      );
+      assert.equal((await access()).canManageUsers, true);
+    },
+  );
+  await check(
+    "revogação bloqueia sessão existente e preserva conta e dados",
+    async () => {
+      await login(manager);
+      const before = await snapshot();
+      for (const id of [reader, legacy]) {
+        await db.query("SELECT public.revoke_user_access($1)", [id]);
+        await db.query("SELECT public.revoke_user_access($1)", [id]);
+        await login(id);
+        assert.equal(await access(), null);
+        await denied("SELECT public.read_snapshot()");
+        await denied("SELECT public.reset_base($1)", [before.revision]);
+        await denied("SELECT public.set_user_role($1,'admin')", [id]);
+        assert.equal(
+          (await db.query("SELECT * FROM public.time_records")).rowCount,
+          0,
+        );
+        await login(manager);
+        const users = (await db.query("SELECT public.list_app_users() AS data"))
+          .rows[0].data;
+        assert.equal(users.find((user) => user.id === id).role, null);
+        assert.deepEqual(await snapshot(), before);
+        await db.query("SELECT public.set_user_role($1,$2)", [
+          id,
+          id === reader ? "reader" : "admin",
+        ]);
+      }
+    },
+  );
+  await check(
     "troca de perfil vale na próxima chamada com a mesma sessão",
     async () => {
       await login(manager);
@@ -276,6 +334,55 @@ try {
         "reset_base(4)",
       ])
         await denied(`SELECT public.${fn}`);
+    },
+  );
+  await check(
+    "exclusão da conta remove perfil e preserva dados e histórico do autor",
+    async () => {
+      await login(legacy);
+      await db.query("SELECT public.import_records_incremental($1,$2)", [
+        JSON.stringify([record]),
+        (await snapshot()).revision,
+      ]);
+      await login(manager);
+      const before = await snapshot();
+      await db.query("SELECT public.revoke_user_access($1)", [legacy]);
+      await db.query("RESET ROLE");
+      // Simula a remoção do registro Auth: a API administrativa é testada separadamente.
+      await db.query("DELETE FROM auth.users WHERE id=$1", [legacy]);
+      assert.equal(
+        (
+          await db.query("SELECT * FROM public.user_access WHERE user_id=$1", [
+            legacy,
+          ])
+        ).rowCount,
+        0,
+      );
+      await login(manager);
+      const after = await snapshot();
+      assert.deepEqual(after.records, before.records);
+      assert.deepEqual(after.schedules, before.schedules);
+      assert.equal(after.revision, before.revision);
+      assert.deepEqual(
+        after.imports.map((entry) => ({ ...entry, actorName: null })),
+        before.imports.map((entry) => ({ ...entry, actorName: null })),
+      );
+      assert.ok(
+        after.imports.some(
+          (entry) =>
+            entry.actor === legacy &&
+            entry.actorName === "Usuário indisponível",
+        ),
+      );
+      const users = (await db.query("SELECT public.list_app_users() AS data"))
+        .rows[0].data;
+      assert.equal(
+        users.some((user) => user.id === legacy),
+        false,
+      );
+      await login(legacy);
+      assert.equal(await access(), null);
+      await denied("SELECT public.read_snapshot()");
     },
   );
   console.log(
